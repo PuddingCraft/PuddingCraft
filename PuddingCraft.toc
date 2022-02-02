@@ -1,0 +1,12 @@
+## Interface: 20501
+## Title: PuddingCraft
+## Author: Paluo - Nethergarde Keep (EU)
+## Notes: A guild crafting directory
+## Version: 0.1
+## SavedVariables: PuddingCraftDB
+
+# Libs
+embeds.xml
+
+# Addon Files
+PuddingCraft.lua
