@@ -1,5 +1,5 @@
 PuddingCraft = LibStub("AceAddon-3.0"):NewAddon("PuddingCraft", "AceComm-3.0", "AceConsole-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0");
-PuddingCraft.Version = "1.0"
+PuddingCraft.Version = "0.9.0"
 PuddingCraft.PuddingCraftFrame = '';
 
 function PuddingCraft:OnInitialize()
@@ -8,11 +8,11 @@ function PuddingCraft:OnInitialize()
     local playerName, realm = UnitName("player")
     self.playerName = playerName
     self.playerGUID = UnitGUID("player");
-    self.recipes = {}
+    self.recipes = {["trade"] = {}, ["craft"] = {}};
     if (self.db.factionrealm.recipes ~= nil) then
         self.allRecipes = self.db.factionrealm.recipes;
     else 
-        self.allRecipes = {}
+        self.allRecipes = {["trade"] = {}, ["craft"] = {}};
     end
     self:RegisterComm("PuddingCraft")
     self:RegisterChatCommand("pc", "handleChatCommand");
@@ -30,21 +30,45 @@ function PuddingCraft:OnEnable()
         end
         local players = {}
         if (PuddingCraft.allRecipes ~= nil) then
-            if (PuddingCraft.allRecipes[itemID] ~= nil) then 
-                players = PuddingCraft.allRecipes[itemID];
-                tooltip:AddLine(" ");
-                tooltip:AddLine("Players that can craft this:");
-                for PlayerName, PlayerGUID in pairs(players) do
-                    local _, class = GetPlayerInfoByGUID(PlayerGUID);
-                    local r, g, b = GetClassColor(class);
-                    tooltip:AddLine(PlayerName, r, g, b);
+            if (PuddingCraft.allRecipes["trade"] ~= nil) then
+                if (PuddingCraft.allRecipes["trade"][itemID] ~= nil) then 
+                    players = PuddingCraft.allRecipes["trade"][itemID];
+                    tooltip:AddLine(" ");
+                    tooltip:AddLine("Players that can craft this:");
+                    for PlayerName, PlayerGUID in pairs(players) do
+                        local _, class = GetPlayerInfoByGUID(PlayerGUID);
+                        local r, g, b = GetClassColor(class);
+                        tooltip:AddLine(PlayerName, r, g, b);
+                    end
+                    tooltip:AddLine(" ");
                 end
-                tooltip:AddLine(" ");
+            end
+        end
+    end)
+
+    GameTooltip:HookScript("OnTooltipSetSpell", function(tooltip)
+        local itemName, itemID = tooltip:GetSpell();
+        local players = {}
+        if (PuddingCraft.allRecipes ~= nil) then
+            if (PuddingCraft.allRecipes["craft"] ~= nil) then 
+                if (PuddingCraft.allRecipes["craft"][itemID] ~= nil) then 
+                    players = PuddingCraft.allRecipes["craft"][itemID];
+                    tooltip:AddLine(" ");
+                    tooltip:AddLine("Players that can craft this:");
+                    for PlayerName, PlayerGUID in pairs(players) do
+                        local _, class = GetPlayerInfoByGUID(PlayerGUID);
+                        local r, g, b = GetClassColor(class);
+                        tooltip:AddLine(PlayerName, r, g, b);
+                    end
+                    tooltip:AddLine(" ");
+                end
             end
         end
     end)
     
     self:SetupFrames();
+
+    PuddingCraft:Print(PuddingCraft.Version .. " Loaded. Type '/pc help' for usage information.");
 end
 
 function PuddingCraft:OnDisable()
@@ -52,37 +76,65 @@ function PuddingCraft:OnDisable()
 end
 
 function PuddingCraft:onTradeSkillOpen()
-    local tradeSkillName, tradeSkillLevel, _ = GetTradeSkillLine();
-    local recipes = PuddingCraft:scanRecipes(tradeSkillName, tradeSkillLevel);
-	--local i = 1; 
-    for _, itemID in pairs(recipes) do
-		--if (i <= 1) then
-			PuddingCraft:updateRecipe(_, itemID, PuddingCraft.playerName, PuddingCraft.playerGUID);
-			if (PuddingCraft.recipes ~= nil) then
-				PuddingCraft.recipes[itemID] = itemID;
-			end
-			--i = i + 1;
-		--end
+    local skillType, skillName, skillLevel = PuddingCraft:getSkillLevel();
+    
+    if (skillLevel > 0) then
+        local recipes = PuddingCraft:scanRecipes(skillType, skillName, skillLevel);
+        if (recipes ~= nil) then
+            for _, itemID in pairs(recipes) do
+                PuddingCraft:updateRecipe(skillType, itemID, PuddingCraft.playerName, PuddingCraft.playerGUID);
+                if (PuddingCraft.recipes ~= nil) then
+                    if (PuddingCraft.recipes[skillType] ~= nil) then 
+                        PuddingCraft.recipes[skillType][itemID] = itemID;
+                    else
+                        PuddingCraft.recipes[skillType] = {[itemID] = itemID};
+                    end
+                end
+            end
+            PuddingCraft:updateDB();
+        end
+    end    
+end
+
+function PuddingCraft:OnCommReceived(prefix, msg)
+    local _, data = PuddingCraft:Deserialize(msg);    
+    PuddingCraft:debugMsg('Recieved recipes from ' .. data.player);    
+    for skillType, items in pairs(data.recipes) do
+        for itemID, players in pairs(items) do
+            for playerName, playerGUID in pairs(players) do
+                PuddingCraft:updateRecipe(skillType, itemID, playerName, playerGUID);
+            end
+        end
+        
+        --[[for _, itemID in pairs(items) do
+            PuddingCraft:debugMsg("Importing ItemID: " .. itemID .. ", From: " .. data.player);
+            PuddingCraft:updateRecipe(skillType, itemID, data.player, data.guid);
+        end]]--
     end
     PuddingCraft:updateDB();
 end
 
-function PuddingCraft:OnCommReceived(prefix, msg)
-    local _, data = self:Deserialize(msg);    
-    PuddingCraft:debugMsg('Recieved recipes from ' .. data.player);    
-    for _, itemID in pairs(data.recipes) do
-		PuddingCraft:debugMsg("Importing ItemID: " .. itemID .. ", From: " .. data.player);
-        PuddingCraft:updateRecipe(_, itemID, data.player, data.guid);
+function PuddingCraft:getSkillLevel()
+    local tradeSkillName, tradeSkillLevel, _ = GetTradeSkillLine();
+    local craftSkillName, craftSkillLevel, _ = GetCraftDisplaySkillLine();
+    local skillType, skillName, skillLevel;
+    if (tradeSkillLevel > 0) then
+        skillType = "trade";
+        skillName = tradeSkillName;
+        skillLevel = tradeSkillLevel;
+    elseif (craftSkillLevel > 0) then
+        skillType = "craft";
+        skillName = craftSkillName;
+        skillLevel = craftSkillLevel;
     end
-
-    self.updateDB();
+    return skillType, skillName, skillLevel
 end
 
-function PuddingCraft:scanRecipes(tradeSkillName, tradeSkillLevel)    
+function PuddingCraft:scanRecipes(skillType, skillName, skillLevel)
     local recipes = {};
-    if (tradeSkillLevel > 0) then
-        local numRecipes = GetNumTradeSkills();
-        PuddingCraft:debugMsg(tradeSkillName .. ' opened, ' .. numRecipes .. ' recipes found.');
+    local numRecipes = 0;
+    if (skillType == "trade") then
+        numRecipes = GetNumTradeSkills();
         
         local name, type;        
         for i=1,numRecipes do
@@ -91,34 +143,50 @@ function PuddingCraft:scanRecipes(tradeSkillName, tradeSkillLevel)
                 table.insert( recipes, tonumber(GetTradeSkillItemLink(i):match("item:(%d+)")) );           
             end
         end
+    elseif (skillType == "craft") then
+        numRecipes = GetNumCrafts();
+        
+        local name, type;        
+        for i=1,numRecipes do
+            name, type, _, _, _, _ = GetCraftInfo(i);
+            if (name and type ~= "header") then
+                table.insert( recipes, tonumber(GetCraftItemLink(i):match("enchant:(%d+)")) ); 
+            end
+        end
     end
+    PuddingCraft:debugMsg(skillName .. ' opened, ' .. numRecipes .. ' recipes found.');
     return recipes;
 end
 
-function PuddingCraft:updateRecipe(type, id, playerName, playerGUID)
+function PuddingCraft:updateRecipe(skillType, id, playerName, playerGUID)
     if (PuddingCraft.allRecipes ~= nil) then -- recipe list exists
-        PuddingCraft:debugMsg("Recipe list exists");
-        if (PuddingCraft.allRecipes[id] ~= nil) then -- current recipe already has linked players
-            PuddingCraft:debugMsg("recipe already has linked players");
-            if (PuddingCraft.allRecipes[id][playerName] ~= nil) then -- player is already linked to recipe
-                -- do nothing 
-                PuddingCraft:debugMsg("player is already linked to recipe");
+        PuddingCraft:debugMsg("recipe list exists");
+        if (PuddingCraft.allRecipes[skillType] ~= nil) then -- list for skill type exists
+            PuddingCraft:debugMsg("list for skill type exists");
+            if (PuddingCraft.allRecipes[skillType][id] ~= nil) then -- current recipe already has linked players
+                PuddingCraft:debugMsg("recipe already has linked players");
+                if (PuddingCraft.allRecipes[skillType][id][playerName] ~= nil) then -- player is already linked to recipe
+                    -- do nothing 
+                    PuddingCraft:debugMsg("player ".. playerName .. " is already linked to recipe " .. id);
+                else
+                    -- link player to recipe
+                    PuddingCraft:debugMsg("linking player ".. playerName .. " to recipe " .. id);
+                    PuddingCraft.allRecipes[skillType][id][playerName] = playerGUID;
+                end
             else
-                -- link player to recipe
-                PuddingCraft:debugMsg("link player to recipe");
-                PuddingCraft.allRecipes[id][playerName] = playerGUID;
-            end
+                -- add recipe and link player to it
+                PuddingCraft:debugMsg("add recipe " .. id .." and link player " .. playerName .." ("..playerGUID..") to it");
+                PuddingCraft.allRecipes[skillType][id] = { [playerName] = playerGUID }
+            end 
         else
-            -- add recipe and link player to it
-            PuddingCraft:debugMsg("add recipe and link player to it");
-            PuddingCraft.allRecipes[id] = { [playerName] = playerGUID }
-        end 
+            -- add skill type, recipe, and link player to it
+            PuddingCraft:debugMsg("add skill type, recipe " .. id .. ", and link player " .. playerName .. " ("..playerGUID..") to it");
+            PuddingCraft.allRecipes[skillType] = {[id] = { [playerName] = playerGUID }}
+        end
     else
         -- crate db, add recipe, and link player
         PuddingCraft:debugMsg("Recipe list does not exist");
-        PuddingCraft.allRecipes = {
-            [id] = { [playerName] = playerGUID },
-        };
+        PuddingCraft.allRecipes = {[skillType] = {[id] = { [playerName] = playerGUID }}};
     end
 end
 
@@ -128,16 +196,17 @@ end
 
 function PuddingCraft:broadcastRecipes()
     local data = {
-        ["player"] = self.playerName,
-        ["guid"] = self.playerGUID,
-        ["recipes"] = self.recipes,
+        ["player"] = PuddingCraft.playerName,
+        ["guid"] = PuddingCraft.playerGUID,
+        ["recipes"] = PuddingCraft.allRecipes,
     }
-    self:SendCommMessage("PuddingCraft", self:Serialize(data), "GUILD")
+    PuddingCraft:SendCommMessage("PuddingCraft", PuddingCraft:Serialize(data), "GUILD")
 end
 
 function PuddingCraft:reset()
     self.db:ResetDB()
     self.allRecipes = {}
+    ReloadUI();
 end
 
 function PuddingCraft:SetupFrames()
@@ -213,8 +282,6 @@ function PuddingCraft:SetupFrames()
 
     PuddingCraft.PuddingCraftFrame.scrollframe = scrollframe
     PuddingCraft.PuddingCraftFrame.scrollchild = scrollchild
-
-    
 end
 
 function PuddingCraft:search()
@@ -229,32 +296,38 @@ function PuddingCraft:search()
     local i = 1;
 
     if (PuddingCraft.allRecipes ~= nil) then
-        for itemID, players in pairs(PuddingCraft.allRecipes) do
+        for skillType, itemIDs in pairs(PuddingCraft.allRecipes) do
+            for itemID, players in pairs(itemIDs) do
+                if (skillType == "trade") then 
+                    itemName, itemLink = GetItemInfo(itemID);
+                elseif (skillType == "craft") then 
+                    itemName = GetSpellInfo(itemID);
+                    itemLink = GetSpellLink(itemID);
+                end
 
-            itemName, itemLink = GetItemInfo(itemID);
+                if (itemName ~= nil) then
+                    if (text == nil or string.find(strlower(itemName), strlower(text))) then 
+                        items[i] = {["frame"] = CreateFrame("Frame", "ItemLinkFrame"..i, PuddingCraft.PuddingCraftFrame.scrollchild), ["link"] = nil, ["skillType"] = skillType};
+                        if (i == 1) then            
+                            items[i]["frame"]:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame.scrollchild, "TOPLEFT", 10, -30);
+                        else
+                            items[i]["frame"]:SetPoint("TOPLEFT", items[i-1]["frame"], "BOTTOMLEFT");
+                        end
 
-            if (itemName ~= nil) then
-                if (text == nil or string.find(strlower(itemName), strlower(text))) then 
-                    items[i] = {["frame"] = CreateFrame("Frame", "ItemLinkFrame"..i, PuddingCraft.PuddingCraftFrame.scrollchild), ["link"] = nil};
-                    if (i == 1) then            
-                        items[i]["frame"]:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame.scrollchild, "TOPLEFT", 10, -30);
-                    else
-                        items[i]["frame"]:SetPoint("TOPLEFT", items[i-1]["frame"], "BOTTOMLEFT");
+                        items[i]["frame"]:SetSize(180,12);
+
+                        
+                        items[i]["link"] = itemLink;
+
+                        ItemLinkText = items[i]["frame"]:CreateFontString(nil, "OVERLAY", "GameFontNormal");
+                        ItemLinkText:SetText(itemLink);
+                        ItemLinkText:SetPoint("LEFT");
+                        items[i]["frame"]:EnableMouse(true);
+
+                        items[i]["players"] = players;
+
+                        i = i + 1;
                     end
-
-                    items[i]["frame"]:SetSize(180,12);
-
-                    
-                    items[i]["link"] = itemLink;
-
-                    ItemLinkText = items[i]["frame"]:CreateFontString(nil, "OVERLAY", "GameFontNormal");
-                    ItemLinkText:SetText(itemLink);
-                    ItemLinkText:SetPoint("LEFT");
-                    items[i]["frame"]:EnableMouse(true);
-
-                    items[i]["players"] = players;
-
-                    i = i + 1;
                 end
             end
         end
@@ -263,7 +336,11 @@ function PuddingCraft:search()
             item["frame"]:HookScript("OnEnter", function()
                 if (item["link"]) then
                     GameTooltip:SetOwner(item["frame"], "ANCHOR_TOP");
-                    GameTooltip:SetHyperlink(item["link"]);
+                    --if (item["skillType"] == "trade") then
+                        GameTooltip:SetHyperlink(item["link"]);
+                    --else
+                    --    GameTooltip:SetSpell(item["link"]);
+                    --end
                     GameTooltip:Show();
                 end
             end);
@@ -272,15 +349,30 @@ function PuddingCraft:search()
                 GameTooltip:Hide();
             end);
         end
-        PuddingCraft.PuddingCraftFrame.scrollchild.items = items;
+        
     end
-
+    PuddingCraft.PuddingCraftFrame.scrollchild.items = items;
 end
 
-
+function PuddingCraft:help()
+    print("PuddingCraft - Help");
+    print("This addon records the items you can craft and sends that list to guild members with the addon.");
+    print("You can search for an item in the list, and mousing over any craftable item or link will show you who can make that item.");
+    print("Type '/pc' to show the search frame.");
+    print("Type '/pc help' to show this text.");
+    print("Type '/pc send' to broadcast your database.");
+    print("Type '/pc scan' to scan currently open tradeskill window (only required for enchanting at the moment).");
+    print("Type '/pc reset' to wipe your database. Used when db format changes or data is corrupted.");
+end
 
 function PuddingCraft:showRecipes()
     PuddingCraft.PuddingCraftFrame:Show();
+end
+
+function PuddingCraft:debugMsg (msg)
+    if (PuddingCraft.debug) then 
+        PuddingCraft:Print(msg)
+    end
 end
 
 function PuddingCraft:handleChatCommand(arg)
@@ -293,31 +385,16 @@ function PuddingCraft:handleChatCommand(arg)
         end
     elseif (arg == "send") then
         self:broadcastRecipes();
+    elseif (arg == "scan") then
+        self:onTradeSkillOpen();
     elseif (arg == "reset") then
         self:reset();
-    else 
+    elseif (arg == "help") then
+        self:help();
+    else
         self:showRecipes();
     end
     if (self.debug) then
         self:Print(arg);
-    end
-end
-
---[[function PuddingCraft:dump(o)
-   if type(o) == 'table' then
-      local s = '{ '
-      for k,v in pairs(o) do
-         if type(k) ~= 'number' then k = '"'..k..'"' end
-         s = s .. '['..k..'] = ' .. dump(v) .. ','
-      end
-      return s .. '} '
-   else
-      return tostring(o)
-   end
-end]]--
-
-function PuddingCraft:debugMsg (msg)
-    if (PuddingCraft.debug) then 
-        PuddingCraft:Print(msg)
     end
 end
