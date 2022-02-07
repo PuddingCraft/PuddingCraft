@@ -21,6 +21,8 @@ end
 
 function PuddingCraft:OnEnable()
     self:RegisterEvent("TRADE_SKILL_UPDATE", "onTradeSkillOpen")
+    self:RegisterEvent("CRAFT_UPDATE", "onTradeSkillOpen")
+    PuddingCraft.broadcastTimer = PuddingCraft:ScheduleRepeatingTimer("broadcastRecipes", 1800);
     
     GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
         local itemName, itemLink = tooltip:GetItem();
@@ -72,7 +74,8 @@ function PuddingCraft:OnEnable()
 end
 
 function PuddingCraft:OnDisable()
-    
+    PuddingCraft:CancelTimer(PuddingCraft.broadcastTimer);
+    PuddingCraft:broadcastRecipes();
 end
 
 function PuddingCraft:onTradeSkillOpen()
@@ -210,7 +213,6 @@ function PuddingCraft:reset()
 end
 
 function PuddingCraft:SetupFrames()
-
     PuddingCraft.PuddingCraftFrame = CreateFrame("Frame", "PuddingCraftFrame", UIParent, "BasicFrameTemplateWithInset");
     PuddingCraft.PuddingCraftFrame:SetPoint("CENTER");
     PuddingCraft.PuddingCraftFrame:SetSize(300,400);
@@ -227,6 +229,8 @@ function PuddingCraft:SetupFrames()
     editFrame:SetScript("OnKeyDown", function(self, key)
         if (key == "ENTER") then
             PuddingCraft:search();
+        elseif (key == "ESCAPE") then
+            PuddingCraft.PuddingCraftFrame:Hide();
         end
     end)
     
@@ -250,8 +254,6 @@ function PuddingCraft:SetupFrames()
     button:SetScript("OnClick", PuddingCraft.search);
 
     PuddingCraft.PuddingCraftFrame.searchButton = button;
-
-    
 
     PuddingCraft.PuddingCraftFrame:Hide();
 
