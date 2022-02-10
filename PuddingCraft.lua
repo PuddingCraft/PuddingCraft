@@ -100,21 +100,25 @@ function PuddingCraft:onTradeSkillOpen()
 end
 
 function PuddingCraft:OnCommReceived(prefix, msg)
-    local _, data = PuddingCraft:Deserialize(msg);    
-    PuddingCraft:debugMsg('Recieved recipes from ' .. data.player);    
-    for skillType, items in pairs(data.recipes) do
-        for itemID, players in pairs(items) do
-            for playerName, playerGUID in pairs(players) do
-                PuddingCraft:updateRecipe(skillType, itemID, playerName, playerGUID);
-            end
-        end
-        
-        --[[for _, itemID in pairs(items) do
-            PuddingCraft:debugMsg("Importing ItemID: " .. itemID .. ", From: " .. data.player);
-            PuddingCraft:updateRecipe(skillType, itemID, data.player, data.guid);
-        end]]--
+    local _, data = PuddingCraft:Deserialize(msg);
+    if (data.player ~= nill) then     
+        PuddingCraft:debugMsg('Recieved recipes from ' .. data.player);
     end
-    PuddingCraft:updateDB();
+    if (data.recipes ~= nil) then
+        for skillType, items in pairs(data.recipes) do
+            for itemID, players in pairs(items) do
+                for playerName, playerGUID in pairs(players) do
+                    PuddingCraft:updateRecipe(skillType, itemID, playerName, playerGUID);
+                end
+            end
+            
+            --[[for _, itemID in pairs(items) do
+                PuddingCraft:debugMsg("Importing ItemID: " .. itemID .. ", From: " .. data.player);
+                PuddingCraft:updateRecipe(skillType, itemID, data.player, data.guid);
+            end]]--
+        end
+        PuddingCraft:updateDB();
+    end
 end
 
 function PuddingCraft:getSkillLevel()
@@ -198,12 +202,14 @@ function PuddingCraft:updateDB()
 end
 
 function PuddingCraft:broadcastRecipes()
-    local data = {
-        ["player"] = PuddingCraft.playerName,
-        ["guid"] = PuddingCraft.playerGUID,
-        ["recipes"] = PuddingCraft.allRecipes,
-    }
-    PuddingCraft:SendCommMessage("PuddingCraft", PuddingCraft:Serialize(data), "GUILD")
+    if (PuddingCraft.allRecipes ~= nil) then 
+        local data = {
+            ["player"] = PuddingCraft.playerName,
+            ["guid"] = PuddingCraft.playerGUID,
+            ["recipes"] = PuddingCraft.allRecipes,
+        }
+        PuddingCraft:SendCommMessage("PuddingCraft", PuddingCraft:Serialize(data), "GUILD")
+    end
 end
 
 function PuddingCraft:reset()
