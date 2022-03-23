@@ -1,12 +1,15 @@
 PuddingCraft = LibStub("AceAddon-3.0"):NewAddon("PuddingCraft", "AceComm-3.0", "AceConsole-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0");
-PuddingCraft.Version = "0.9.0"
+PuddingCraft.Version = "1.0.3"
 PuddingCraft.PuddingCraftFrame = '';
+PuddingCraft.itemTypeFilter = nil;
+PuddingCraft.itemSubTypeFilter = nil;
 
 function PuddingCraft:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("PuddingCraftDB", defaults, true)
     self.GUI = LibStub("AceGUI-3.0")
     local playerName, realm = UnitName("player")
     self.playerName = playerName
+    self.guild = GetGuildInfo("player");
     self.playerGUID = UnitGUID("player");
     self.recipes = {["trade"] = {}, ["craft"] = {}};
     if (self.db.factionrealm.recipes ~= nil) then
@@ -23,6 +26,7 @@ function PuddingCraft:OnEnable()
     self:RegisterEvent("TRADE_SKILL_UPDATE", "onTradeSkillOpen")
     self:RegisterEvent("CRAFT_UPDATE", "onTradeSkillOpen")
     PuddingCraft.broadcastTimer = PuddingCraft:ScheduleRepeatingTimer("broadcastRecipes", 1800);
+
     
     GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
         local itemName, itemLink = tooltip:GetItem();
@@ -37,11 +41,18 @@ function PuddingCraft:OnEnable()
                     players = PuddingCraft.allRecipes["trade"][itemID];
                     tooltip:AddLine(" ");
                     tooltip:AddLine("Players that can craft this:");
+                    local count = 0
+                    local numPlayers = tablelength(players);
                     for PlayerName, PlayerGUID in pairs(players) do
-                        local _, class = GetPlayerInfoByGUID(PlayerGUID);
-                        local r, g, b = GetClassColor(class);
-                        tooltip:AddLine(PlayerName, r, g, b);
+                        if (count < 15) then
+                            local _, class = GetPlayerInfoByGUID(PlayerGUID);
+                            local r, g, b = GetClassColor(class);
+                            tooltip:AddLine(PlayerName, r, g, b);
+                            count = count + 1;
+                        end
+                        
                     end
+                    tooltip:AddLine("+" .. (numPlayers-15) .. " more");
                     tooltip:AddLine(" ");
                 end
             end
@@ -70,7 +81,7 @@ function PuddingCraft:OnEnable()
     
     self:SetupFrames();
 
-    PuddingCraft:Print(PuddingCraft.Version .. " Loaded. Type '/pc help' for usage information.");
+    PuddingCraft:Print(PuddingCraft.Version .. " Loaded by Paluo @ Nethergarde Keep(EU). Type '/pc help' for usage information.");
 end
 
 function PuddingCraft:OnDisable()
@@ -202,7 +213,7 @@ function PuddingCraft:updateDB()
 end
 
 function PuddingCraft:broadcastRecipes()
-    if (PuddingCraft.allRecipes ~= nil) then 
+    if (PuddingCraft.allRecipes ~= nil and PuddingCraft.guild ~= nil) then
         local data = {
             ["player"] = PuddingCraft.playerName,
             ["guid"] = PuddingCraft.playerGUID,
@@ -226,20 +237,23 @@ function PuddingCraft:SetupFrames()
     PuddingCraft.PuddingCraftFrame.title:SetPoint("CENTER", PuddingCraftFrame.TitleBg, "CENTER", 5, 0);
     PuddingCraft.PuddingCraftFrame.title:SetText("Pudding Craft");
     PuddingCraft.PuddingCraftFrame:SetMovable(true);
+    PuddingCraft.PuddingCraftFrame:EnableMouse(true)
+    PuddingCraft.PuddingCraftFrame:RegisterForDrag("LeftButton")
+    PuddingCraft.PuddingCraftFrame:SetScript("OnDragStart", PuddingCraft.PuddingCraftFrame.StartMoving)
+    PuddingCraft.PuddingCraftFrame:SetScript("OnDragStop", PuddingCraft.PuddingCraftFrame.StopMovingOrSizing)
 
     local editFrame = CreateFrame("EditBox", "editFrame", PuddingCraft.PuddingCraftFrame, "InputBoxTemplate");
-    editFrame:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame, "TOPLEFT", 15, 0);
-    editFrame:SetPoint("TOPRIGHT", PuddingCraft.PuddingCraftFrame, "TOPRIGHT", -130, 0);
-    editFrame:SetFrameStrata("DIALOG");
-    editFrame:SetHeight(80);
+    editFrame:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame, "TOPLEFT", 15, -32);
+    editFrame:SetPoint("TOPRIGHT", PuddingCraft.PuddingCraftFrame, "TOPRIGHT", -130, -32);
+    --editFrame:SetFrameStrata("DIALOG");
+    editFrame:SetHeight(15);
     editFrame:SetScript("OnKeyDown", function(self, key)
         if (key == "ENTER") then
             PuddingCraft:search();
         elseif (key == "ESCAPE") then
             PuddingCraft.PuddingCraftFrame:Hide();
         end
-    end)
-    
+    end)    
     PuddingCraft.PuddingCraftFrame.editFrame = editFrame;
 
     local button = CreateFrame("Button", "searchButton", PuddingCraft.PuddingCraftFrame);
@@ -256,16 +270,13 @@ function PuddingCraft:SetupFrames()
     text:SetPoint("TOPLEFT", button, "TOPLEFT", 42, -5);
     text:SetText("Search");
     button:SetFontString(text);
-
     button:SetScript("OnClick", PuddingCraft.search);
-
     PuddingCraft.PuddingCraftFrame.searchButton = button;
-
     PuddingCraft.PuddingCraftFrame:Hide();
 
     local scrollframe = scrollframe or CreateFrame("ScrollFrame", "ScrollFrame", PuddingCraft.PuddingCraftFrame, "UIPanelScrollFrameTemplate");
-    scrollframe:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame, "TOPLEFT", 0, -57);
-    scrollframe:SetPoint("TOPRIGHT", PuddingCraft.PuddingCraftFrame, "TOPRIGHT", -5, -57);
+    scrollframe:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame, "TOPLEFT", 0, -65);
+    scrollframe:SetPoint("TOPRIGHT", PuddingCraft.PuddingCraftFrame, "TOPRIGHT", -5, -65);
     scrollframe:SetPoint("BOTTOMLEFT", PuddingCraft.PuddingCraftFrame, "BOTTOMLEFT", 0, 7);
     scrollframe:SetPoint("BOTTOMRIGHT", PuddingCraft.PuddingCraftFrame, "BOTTOMRIGHT", -5, 7);
 
@@ -307,7 +318,7 @@ function PuddingCraft:search()
         for skillType, itemIDs in pairs(PuddingCraft.allRecipes) do
             for itemID, players in pairs(itemIDs) do
                 if (skillType == "trade") then 
-                    itemName, itemLink = GetItemInfo(itemID);
+                    itemName, itemLink, itemRarity, itemLevel, itemMinLevel, itemType, itemSubType, itemStackCount, itemEquipLoc = GetItemInfo(itemID);
                 elseif (skillType == "craft") then 
                     itemName = GetSpellInfo(itemID);
                     itemLink = GetSpellLink(itemID);
@@ -315,26 +326,34 @@ function PuddingCraft:search()
 
                 if (itemName ~= nil) then
                     if (text == nil or string.find(strlower(itemName), strlower(text))) then 
-                        items[i] = {["frame"] = CreateFrame("Frame", "ItemLinkFrame"..i, PuddingCraft.PuddingCraftFrame.scrollchild), ["link"] = nil, ["skillType"] = skillType};
-                        if (i == 1) then            
-                            items[i]["frame"]:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame.scrollchild, "TOPLEFT", 10, -30);
-                        else
-                            items[i]["frame"]:SetPoint("TOPLEFT", items[i-1]["frame"], "BOTTOMLEFT");
+                        if ((
+                            skillType == "trade" and (
+                                (PuddingCraft.itemTypeFilter == nil or PuddingCraft.itemTypeFilter == itemType) and
+                                (PuddingCraft.itemSubTypeFilter == nil or PuddingCraft.itemSubTypeFilter == itemSubType)
+                            )
+                        ) or (
+                            skillType == "craft" and (
+                                PuddingCraft.itemTypeFilter == nil or PuddingCraft.itemTypeFilter == "Enchant"
+                            )
+                        )) then
+                            items[i] = {["frame"] = CreateFrame("Frame", "ItemLinkFrame"..i, PuddingCraft.PuddingCraftFrame.scrollchild), ["link"] = nil, ["skillType"] = skillType};
+                            if (i == 1) then            
+                                items[i]["frame"]:SetPoint("TOPLEFT", PuddingCraft.PuddingCraftFrame.scrollchild, "TOPLEFT", 10, -30);
+                            else
+                                items[i]["frame"]:SetPoint("TOPLEFT", items[i-1]["frame"], "BOTTOMLEFT");
+                            end
+
+                            items[i]["frame"]:SetSize(180,12);                        
+                            items[i]["link"] = itemLink;
+
+                            ItemLinkText = items[i]["frame"]:CreateFontString(nil, "OVERLAY", "GameFontNormal");
+                            ItemLinkText:SetText(itemLink);
+                            ItemLinkText:SetPoint("LEFT");
+                            items[i]["frame"]:EnableMouse(true);
+                            items[i]["players"] = players;
+
+                            i = i + 1;
                         end
-
-                        items[i]["frame"]:SetSize(180,12);
-
-                        
-                        items[i]["link"] = itemLink;
-
-                        ItemLinkText = items[i]["frame"]:CreateFontString(nil, "OVERLAY", "GameFontNormal");
-                        ItemLinkText:SetText(itemLink);
-                        ItemLinkText:SetPoint("LEFT");
-                        items[i]["frame"]:EnableMouse(true);
-
-                        items[i]["players"] = players;
-
-                        i = i + 1;
                     end
                 end
             end
@@ -342,13 +361,12 @@ function PuddingCraft:search()
         
         for _, item in pairs(items) do
             item["frame"]:HookScript("OnEnter", function()
+                if (item["skillType"] == "trade") then
+                    itemName, itemLink, itemRarity, itemLevel, itemMinLevel, itemType, itemSubType, itemStackCount, itemEquipLoc = GetItemInfo(item["link"]);
+                end
                 if (item["link"]) then
                     GameTooltip:SetOwner(item["frame"], "ANCHOR_TOP");
-                    --if (item["skillType"] == "trade") then
-                        GameTooltip:SetHyperlink(item["link"]);
-                    --else
-                    --    GameTooltip:SetSpell(item["link"]);
-                    --end
+                    GameTooltip:SetHyperlink(item["link"]);
                     GameTooltip:Show();
                 end
             end);
@@ -405,4 +423,54 @@ function PuddingCraft:handleChatCommand(arg)
     if (self.debug) then
         self:Print(arg);
     end
+end
+
+function PuddingCraft:createDropdown(opts)
+    local dropdown_name = '$parent_' .. opts['name'] .. '_dropdown'
+    local menu_items = opts['items'] or {}
+    local title_text = opts['title'] or ''
+    local dropdown_width = 0
+    local default_val = opts['defaultVal'] or ''
+    local change_func = opts['changeFunc'] or function (dropdown_val) end
+
+    local dropdown = CreateFrame("Frame", dropdown_name, opts['parent'], 'UIDropDownMenuTemplate')
+    local dd_title = dropdown:CreateFontString(dropdown, 'OVERLAY', 'GameFontNormal')
+    dd_title:SetPoint("TOPLEFT", 20, 10)
+
+    for _, item in pairs(menu_items) do -- Sets the dropdown width to the largest item string width.
+        dd_title:SetText(item)
+        local text_width = dd_title:GetStringWidth() + 20
+        if text_width > dropdown_width then
+            dropdown_width = text_width
+        end
+    end
+
+    UIDropDownMenu_SetWidth(dropdown, dropdown_width)
+    UIDropDownMenu_SetText(dropdown, default_val)
+    dd_title:SetText(title_text)
+
+    UIDropDownMenu_Initialize(dropdown, function(self, level, _)
+        local info = UIDropDownMenu_CreateInfo()
+        for key, val in pairs(menu_items) do
+            info.text = val;
+            info.checked = false
+            info.menuList= key
+            info.hasArrow = false
+            info.func = function(b)
+                UIDropDownMenu_SetSelectedValue(dropdown, b.value, b.value)
+                UIDropDownMenu_SetText(dropdown, b.value)
+                b.checked = true
+                change_func(dropdown, b.value)
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
+    return dropdown
+end
+
+function tablelength(T)
+  local count = 0
+  for _ in pairs(T) do count = count + 1 end
+  return count
 end
