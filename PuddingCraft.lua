@@ -44,7 +44,7 @@ function PuddingCraft:OnEnable()
                     local count = 0
                     local numPlayers = tablelength(players);
                     for PlayerName, PlayerGUID in pairs(players) do
-                        if (count < 15) then
+                        if (count <= 15) then
                             local _, class = GetPlayerInfoByGUID(PlayerGUID);
                             local r, g, b = GetClassColor(class);
                             tooltip:AddLine(PlayerName, r, g, b);
@@ -52,7 +52,9 @@ function PuddingCraft:OnEnable()
                         end
                         
                     end
-                    tooltip:AddLine("+" .. (numPlayers-15) .. " more");
+                    if (count > 15) then
+                        tooltip:AddLine("+" .. (numPlayers-15) .. " more");
+                    end
                     tooltip:AddLine(" ");
                 end
             end

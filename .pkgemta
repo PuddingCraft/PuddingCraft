@@ -1,5 +1,8 @@
 package-as: PuddingCraft-BCC
 
 manual-changelog:
-  filename: CHANGELOG.md
-  markup-type: markdown
+  - filename: CHANGELOG.md
+  - markup-type: markdown
+
+ignore:
+  - CHANGES.txt
